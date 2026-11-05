@@ -1,0 +1,48 @@
+{
+  "name": "geometry-diagrams",
+  "displayName": "Geometry — схема рядом с кодом",
+  "description": "Графы алгоритмов с объяснениями агента и двусторонней связью с кодом; встроенный пример geometry.",
+  "version": "0.2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IliaFF/VS_code_algo_visualizer.git"
+  },
+  "homepage": "https://github.com/IliaFF/VS_code_algo_visualizer#readme",
+  "publisher": "local-geometry",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Education"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./extension.cjs",
+  "activationEvents": [
+    "onCommand:geometry.openDiagram",
+    "onCommand:analysis.openDocument"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "analysis.openDocument",
+        "title": "Анализ агента: Открыть JSON рядом с кодом"
+      },
+      {
+        "command": "geometry.openDiagram",
+        "title": "Geometry: Открыть схему рядом с кодом"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "test:package": "node test/package-check.cjs",
+    "package": "node package.mjs"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  }
+}

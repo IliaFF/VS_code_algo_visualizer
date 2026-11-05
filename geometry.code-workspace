@@ -1,0 +1,33 @@
+{
+  "folders": [
+    {
+      "name": "Algo Visualizer",
+      "path": "."
+    }
+  ],
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Geometry: открыть проект со схемами",
+        "type": "extensionHost",
+        "request": "launch",
+        "runtimeExecutable": "${execPath}",
+        "args": [
+          "--extensionDevelopmentPath=${workspaceFolder:Algo Visualizer}",
+          "${workspaceFolder:Algo Visualizer}/examples/geometry"
+        ]
+      },
+      {
+        "name": "Анализ агента: открыть пример JSON",
+        "type": "extensionHost",
+        "request": "launch",
+        "runtimeExecutable": "${execPath}",
+        "args": [
+          "--extensionDevelopmentPath=${workspaceFolder:Algo Visualizer}",
+          "${workspaceFolder:Algo Visualizer}/examples/analysis-contract"
+        ]
+      }
+    ]
+  }
+}

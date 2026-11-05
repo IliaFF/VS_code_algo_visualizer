@@ -1,0 +1,275 @@
+{
+  "version": 1,
+  "title": "Накопление положительных значений до порога",
+  "summary": "Выборочный учебный обзор: одна функция накопления и её предикат. Документ анализа и экспорт модуля не разбираются как алгоритм. Граф основной функции отражает все явные пути её исходника; граф не разворачивает внутренности Number.isFinite и неявные исключения среды.",
+  "entries": [
+    {
+      "path": "algorithm.cjs",
+      "kind": "file",
+      "summary": "Две функции: накопление подходящих элементов и проверка положительности числа.",
+      "sha256": "3ad4cf1273f5ff3f4306481e2b5fb684d0e08b06f9efe238df81329e1a44f359"
+    }
+  ],
+  "overview": {
+    "nodes": [
+      {
+        "id": "accumulation",
+        "title": "Накопление",
+        "summary": "Пропуск неподходящих значений и остановка при достижении порога.",
+        "row": 0,
+        "column": 0,
+        "target": {"section": "sum-positive"}
+      },
+      {
+        "id": "predicate",
+        "title": "Отбор положительных",
+        "summary": "Вспомогательное правило допуска значения к накоплению.",
+        "row": 1,
+        "column": 0,
+        "target": {"section": "is-positive"}
+      }
+    ],
+    "edges": [
+      {"from": "accumulation", "to": "predicate", "label": "Проверяет знак конечного значения"}
+    ]
+  },
+  "sections": [
+    {
+      "id": "sum-positive",
+      "title": "Суммировать до достижения порога",
+      "summary": "Полный граф функции на уровне исходника. Сумма может превысить порог; функция не обрезает её до limit. Значения NaN, бесконечности, ноль и отрицательные числа пропускаются.",
+      "file": "algorithm.cjs",
+      "scope": "function",
+      "range": {"start": "function sumPositiveUntil(values, limit) {", "end": "\n}"},
+      "layout": "graph",
+      "entry": "check-limit",
+      "nodes": [
+        {
+          "id": "check-limit",
+          "kind": "condition",
+          "title": "Порог неположительный?",
+          "summary": "Для такого порога накопление не требуется.",
+          "range": {"start": "limit <= 0", "end": "limit <= 0"},
+          "row": 0,
+          "column": 1
+        },
+        {
+          "id": "zero",
+          "kind": "exit",
+          "title": "Вернуть ноль",
+          "summary": "Завершить функцию, не читая элементы массива.",
+          "range": {"start": "return 0;", "end": "return 0;"},
+          "row": 1,
+          "column": 0
+        },
+        {
+          "id": "init-total",
+          "kind": "action",
+          "title": "Начать с нулевой суммы",
+          "summary": "Пока ни одно значение не принято.",
+          "range": {"start": "let total = 0;", "end": "let total = 0;"},
+          "row": 1,
+          "column": 1
+        },
+        {
+          "id": "init-index",
+          "kind": "action",
+          "title": "Начать с первого элемента",
+          "summary": "Индекс цикла устанавливается один раз, до первой проверки.",
+          "range": {"start": "let index = 0", "end": "let index = 0"},
+          "row": 2,
+          "column": 1
+        },
+        {
+          "id": "more",
+          "kind": "condition",
+          "title": "Есть следующий элемент?",
+          "summary": "Проверить, что индекс ещё внутри массива.",
+          "range": {"start": "index < values.length", "end": "index < values.length"},
+          "row": 3,
+          "column": 1
+        },
+        {
+          "id": "read",
+          "kind": "action",
+          "title": "Прочитать значение",
+          "summary": "Взять элемент с текущим индексом, не изменяя массив.",
+          "range": {"start": "const value = values[index];", "end": "const value = values[index];"},
+          "row": 4,
+          "column": 1
+        },
+        {
+          "id": "nonfinite",
+          "kind": "condition",
+          "title": "Значение не является конечным числом?",
+          "summary": "NaN и бесконечности сразу пропускаются.",
+          "detail": "Если проверка истинна, правая часть || не вычисляется: isPositive не вызывается для этого элемента.",
+          "range": {"start": "!Number.isFinite(value)", "end": "!Number.isFinite(value)"},
+          "row": 5,
+          "column": 1
+        },
+        {
+          "id": "nonpositive",
+          "kind": "condition",
+          "title": "Конечное значение неположительно?",
+          "summary": "Вызвать предикат и пропустить ноль или отрицательное число.",
+          "detail": "Эта проверка выполняется только после отрицательного ответа на предыдущую. Принимаются лишь конечные строго положительные значения.",
+          "range": {"start": "!isPositive(value)", "end": "!isPositive(value)"},
+          "row": 6,
+          "column": 1,
+          "callee": {
+            "file": "algorithm.cjs",
+            "range": {"start": "value => value > 0", "end": "value => value > 0"},
+            "section": "is-positive"
+          }
+        },
+        {
+          "id": "skip",
+          "kind": "action",
+          "title": "Пропустить элемент",
+          "summary": "Не менять сумму; continue передаёт управление приращению индекса for.",
+          "range": {"start": "continue;", "end": "continue;"},
+          "row": 6,
+          "column": 2
+        },
+        {
+          "id": "add",
+          "kind": "action",
+          "title": "Добавить принятое значение",
+          "summary": "Увеличить сумму на положительный конечный элемент.",
+          "detail": "Используется сложение Number. Возможны округление и переполнение; контракт не обещает точную вещественную арифметику.",
+          "range": {"start": "total += value;", "end": "total += value;"},
+          "row": 7,
+          "column": 1
+        },
+        {
+          "id": "reached",
+          "kind": "condition",
+          "title": "Порог достигнут?",
+          "summary": "Проверить накопленную сумму после добавления элемента.",
+          "range": {"start": "total >= limit", "end": "total >= limit"},
+          "row": 8,
+          "column": 1
+        },
+        {
+          "id": "return-prefix",
+          "kind": "exit",
+          "title": "Вернуть сумму префикса",
+          "summary": "Завершить функцию сразу, не просматривая остаток массива.",
+          "range": {"start": "            return total;", "end": "            return total;"},
+          "row": 8,
+          "column": 2
+        },
+        {
+          "id": "increment",
+          "kind": "action",
+          "title": "Перейти к следующему индексу",
+          "summary": "Выполнить приращение после обычной итерации или continue.",
+          "range": {"start": "index++", "end": "index++"},
+          "row": 9,
+          "column": 1
+        },
+        {
+          "id": "exhausted",
+          "kind": "exit",
+          "title": "Вернуть сумму после обхода",
+          "summary": "Все элементы просмотрены; достигнуть порога не удалось.",
+          "detail": "Начальный перевод строки отличает этот якорь от return total внутри if. Конечная скобка входит в связанный диапазон.",
+          "range": {"start": "\n    return total;", "end": "\n}"},
+          "row": 4,
+          "column": 0
+        }
+      ],
+      "edges": [
+        {"from": "check-limit", "to": "zero", "label": "Да"},
+        {"from": "check-limit", "to": "init-total", "label": "Нет"},
+        {"from": "init-total", "to": "init-index"},
+        {"from": "init-index", "to": "more"},
+        {"from": "more", "to": "read", "label": "Да"},
+        {"from": "more", "to": "exhausted", "label": "Нет"},
+        {"from": "read", "to": "nonfinite"},
+        {"from": "nonfinite", "to": "skip", "label": "Да"},
+        {"from": "nonfinite", "to": "nonpositive", "label": "Нет"},
+        {"from": "nonpositive", "to": "skip", "label": "Да"},
+        {"from": "nonpositive", "to": "add", "label": "Нет"},
+        {"from": "skip", "to": "increment"},
+        {"from": "add", "to": "reached"},
+        {"from": "reached", "to": "return-prefix", "label": "Да"},
+        {"from": "reached", "to": "increment", "label": "Нет"},
+        {"from": "increment", "to": "more", "label": "Следующая итерация"}
+      ],
+      "groups": [
+        {
+          "id": "validation",
+          "title": "Проверить порог",
+          "summary": "Неположительный порог завершает функцию с нулём; иначе можно накапливать значения.",
+          "range": {"start": "    if (limit <= 0) {", "end": "        return 0;\n    }"},
+          "nodes": ["check-limit","zero"]
+        },
+        {
+          "id": "initialization",
+          "title": "Подготовить накопление",
+          "summary": "Начать с нулевой суммы и первого индекса массива.",
+          "range": {"start": "    let total = 0;", "end": "let index = 0"},
+          "nodes": ["init-total","init-index"]
+        },
+        {
+          "id": "iteration",
+          "title": "Обойти подходящие элементы",
+          "summary": "Пропускать неподходящие значения, складывать положительные конечные числа и вернуть сумму при достижении порога.",
+          "range": {"start": "index < values.length", "end": "\n        }\n    }"},
+          "nodes": ["more","read","nonfinite","nonpositive","skip","add","reached","return-prefix","increment"]
+        }
+      ]
+    },
+    {
+      "id": "is-positive",
+      "title": "Проверить положительность",
+      "summary": "Полный граф тела стрелочной функции: вернуть результат единственного сравнения. Для этой простой операции отдельные свойства не добавлены.",
+      "file": "algorithm.cjs",
+      "scope": "function",
+      "range": {"start": "value => value > 0", "end": "value => value > 0"},
+      "layout": "graph",
+      "entry": "compare",
+      "nodes": [
+        {
+          "id": "compare",
+          "kind": "exit",
+          "title": "Вернуть результат value > 0",
+          "summary": "Сравнение даёт true для положительного числа, иначе false; отдельных ветвей исполнения в теле нет.",
+          "range": {"start": "value > 0", "end": "value > 0"},
+          "row": 0,
+          "column": 0
+        }
+      ],
+      "edges": []
+    }
+  ],
+  "properties": [
+    {
+      "kind": "precondition",
+      "section": "sum-positive",
+      "subject": "Аргумент limit",
+      "text": "При штатном использовании limit — конечное число Number. Функция сама не проверяет это требование; неположительный limit обрабатывается ранним возвратом нуля."
+    },
+    {
+      "kind": "data-contract",
+      "section": "sum-positive",
+      "subject": "Входной массив values",
+      "text": "Обычный массив чисел Number, допускающий NaN и бесконечности; без пользовательских getters/Proxy и внешнего изменения во время обхода. Функция читает массив, но не меняет элементы. Конечность и положительность проверяются перед добавлением."
+    },
+    {
+      "kind": "invariant",
+      "section": "sum-positive",
+      "node": "more",
+      "subject": "Голова for перед проверкой index < values.length",
+      "text": "0 ≤ index ≤ values.length. total — результат последовательного сложения с нуля всех конечных строго положительных значений среди элементов с индексами меньше index, в исходном порядке. Это утверждение о вычислениях Number, не о точной сумме вещественных чисел."
+    },
+    {
+      "kind": "postcondition",
+      "section": "sum-positive",
+      "subject": "Возвращаемое значение sumPositiveUntil",
+      "text": "При limit ≤ 0 возвращается 0. Иначе возвращается первая накопленная сумма, достигшая limit, либо сумма принятых элементов после полного обхода. Результат может превышать limit и может стать Infinity при переполнении Number."
+    }
+  ]
+}
