@@ -2,7 +2,7 @@
   "name": "geometry-diagrams",
   "displayName": "Geometry — схема рядом с кодом",
   "description": "Графы алгоритмов с объяснениями агента и двусторонней связью с кодом; встроенный пример geometry.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/IliaFF/VS_code_algo_visualizer.git"

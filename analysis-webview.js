@@ -162,9 +162,13 @@ function drawEdges(canvas, nodes, edges) {
         return item;
     };
     const defs = add('defs', {});
-    const marker = add('marker', {id: 'analysis-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse'});
-    marker.append(add('path', {d: 'M 0 0 L 10 5 L 0 10 z', class: 'arrow-head'}));
-    defs.append(marker); svg.append(defs); canvas.append(svg);
+    for (const active of [false, true]) {
+        const marker = add('marker', {id: active ? 'analysis-arrow-active' : 'analysis-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: 'auto-start-reverse'});
+        marker.append(add('path', {d: 'M 0 0 L 10 5 L 0 10 z', class: active ? 'arrow-head-active' : 'arrow-head'}));
+        defs.append(marker);
+    }
+    svg.append(defs); canvas.append(svg);
+    const cards = new Map([...canvas.querySelectorAll('.analysis-node')].map(card => [card.dataset.node, card]));
     const reaches = (start, target, visited = new Set()) => {
         if (start === target) return true;
         if (visited.has(start)) return false;
@@ -179,11 +183,12 @@ function drawEdges(canvas, nodes, edges) {
         if (!canvas.isConnected) return;
         const matrix = svg.getScreenCTM();
         if (!matrix) return;
-        svg.querySelectorAll('.edge-path,.edge-halo,.edge-origin,.edge-label,.edge-label-bg').forEach(item => item.remove());
-        svg.setAttribute('width', canvas.scrollWidth); svg.setAttribute('height', canvas.scrollHeight);
+        svg.querySelectorAll('.edge-control,.edge-label-layer,.edge-highlight').forEach(item => item.remove());
+        cards.forEach(card => card.classList.remove('edge-source', 'edge-target'));
+        svg.setAttribute('width', canvas.scrollWidth); svg.setAttribute('height', canvas.offsetHeight);
         const inverse = matrix.inverse();
         const positions = new Map(nodes.map(node => {
-            const rect = [...canvas.querySelectorAll('.analysis-node')].find(item => item.dataset.node === node.id).getBoundingClientRect();
+            const rect = cards.get(node.id).getBoundingClientRect();
             const top = new DOMPoint(rect.left + rect.width / 2, rect.top).matrixTransform(inverse);
             const bottom = new DOMPoint(rect.left + rect.width / 2, rect.bottom).matrixTransform(inverse);
             const left = new DOMPoint(rect.left, rect.top).matrixTransform(inverse).x;
@@ -192,7 +197,31 @@ function drawEdges(canvas, nodes, edges) {
         }));
         const left = Math.min(...[...positions.values()].map(rect => rect.left));
         const right = Math.max(...[...positions.values()].map(rect => rect.right));
-        const labels = [];
+        const labels = [], occupied = [...positions.values()];
+        let hovered, focused;
+        const highlight = () => {
+            svg.querySelector('.edge-highlight')?.remove();
+            cards.forEach(card => card.classList.remove('edge-source', 'edge-target'));
+            const active = hovered || focused;
+            if (!active) return;
+            cards.get(active.edge.from).classList.add('edge-source');
+            cards.get(active.edge.to).classList.add('edge-target');
+            // Draw above other routes without reordering the original edges or their hit areas.
+            const overlay = add('g', {class: 'edge-highlight', 'aria-hidden': 'true'});
+            overlay.append(add('path', {d: active.path.getAttribute('d'), class: 'edge-active-halo'}),
+                add('path', {d: active.path.getAttribute('d'), class: 'edge-active-path' + (returns.has(active.edge) ? ' edge-return' : ''), 'marker-end': 'url(#analysis-arrow-active)'}),
+                add('circle', {cx: active.x1, cy: active.from.bottom, r: 4.5, class: 'arrow-head-active'}));
+            if (active.label) {
+                const label = active.label.cloneNode(true);
+                label.setAttribute('class', 'edge-active-label');
+                overlay.append(label);
+            }
+            svg.append(overlay);
+        };
+        const pointer = (item, relation) => {
+            item.addEventListener('pointerenter', () => { hovered = relation; highlight(); });
+            item.addEventListener('pointerleave', () => { if (hovered === relation) hovered = null; highlight(); });
+        };
         edges.forEach((edge, index) => {
             const from = positions.get(edge.from), to = positions.get(edge.to);
             const outgoing = edges.filter(item => item.from === edge.from);
@@ -205,25 +234,64 @@ function drawEdges(canvas, nodes, edges) {
             const returning = returns.has(edge);
             const direct = !returning && to.top > from.bottom && to.top - from.bottom < 150;
             const lane = returning ? left - 40 - index * 24 : right + 40 + index * 24;
+            const points = direct ? [[x1, from.bottom], [x1, y1], [x2, y1], [x2, to.top - 3]]
+                : [[x1, from.bottom], [x1, y1], [lane, y1], [lane, y2], [x2, y2], [x2, to.top - 3]];
             const d = direct
                 ? `M ${x1} ${from.bottom} V ${y1} H ${x2} V ${to.top - 3}`
                 : `M ${x1} ${from.bottom} V ${y1} H ${lane} V ${y2} H ${x2} V ${to.top - 3}`;
             const path = add('path', {d, class: 'edge-path' + (returning ? ' edge-return' : ''), 'marker-end': 'url(#analysis-arrow)'});
-            path.append(add('title', {}, edge.from + ' → ' + edge.to + (edge.label ? ': ' + edge.label : '')));
-            svg.append(add('path', {d, class: 'edge-halo', 'aria-hidden': 'true'}), path,
-                add('circle', {cx: x1, cy: from.bottom, r: 3.5, class: 'edge-origin', 'aria-hidden': 'true'}));
-            if (edge.label || returning) {
-                labels.push(add('text', {x: x1, y: from.bottom + 21, 'text-anchor': 'middle', class: 'edge-label'},
-                    returning ? '↶ ' + (edge.label || 'Возврат цикла') : edge.label));
-            }
+            const title = nodes.find(node => node.id === edge.from).title + ' → ' + nodes.find(node => node.id === edge.to).title + (edge.label ? ': ' + edge.label : '');
+            const control = add('g', {class: 'edge-control', tabindex: 0, role: 'img', 'aria-label': title, 'data-edge': index});
+            control.append(add('title', {}, title), add('path', {d, class: 'edge-halo', 'aria-hidden': 'true'}), path,
+                add('circle', {cx: x1, cy: from.bottom, r: 3.5, class: 'edge-origin', 'aria-hidden': 'true'}),
+                add('path', {d, class: 'edge-hit', 'aria-hidden': 'true'}));
+            svg.append(control);
+            const relation = {edge, path, x1, from, points, index};
+            pointer(control, relation);
+            control.addEventListener('focus', () => { focused = relation; highlight(); });
+            control.addEventListener('blur', () => { if (focused === relation) focused = null; highlight(); });
+            if (edge.label || returning) labels.push(relation);
         });
-        // Labels stay above every route, including the halos of later edges.
-        for (const label of labels) {
-            svg.append(label);
-            const bounds = label.getBBox();
-            const background = add('rect', {x: bounds.x - 5, y: bounds.y - 2, width: bounds.width + 10, height: bounds.height + 4, rx: 4, class: 'edge-label-bg'});
-            svg.insertBefore(background, label);
+        const layer = add('g', {class: 'edge-label-layer'});
+        svg.append(layer);
+        const overlaps = (a, b) => a.left < b.right + 5 && a.right + 5 > b.left && a.top < b.bottom + 5 && a.bottom + 5 > b.top;
+        for (const relation of labels) {
+            const {edge, x1, from, points, index} = relation;
+            const label = add('foreignObject', {width: 180, height: 1000, class: 'edge-label', 'data-edge': index});
+            const body = element('div', returns.has(edge) ? '↶ ' + (edge.label || 'Возврат цикла') : edge.label, 'edge-label-body');
+            label.append(body); layer.append(label);
+            const width = body.offsetWidth, height = body.offsetHeight;
+            const candidates = [[x1, from.bottom + height / 2 + 7]];
+            for (let i = 1; i < points.length; i++) {
+                const [ax, ay] = points[i - 1], [bx, by] = points[i];
+                if (ay === by && Math.abs(bx - ax) >= width + 16) {
+                    const lo = Math.min(ax, bx) + width / 2 + 8, hi = Math.max(ax, bx) - width / 2 - 8;
+                    candidates.push([(lo + hi) / 2, ay]);
+                    for (let x = lo; x <= hi; x += Math.max(24, width / 2)) candidates.push([x, ay]);
+                } else if (ax === bx && Math.abs(by - ay) >= height + 16) {
+                    const lo = Math.min(ay, by) + height / 2 + 8, hi = Math.max(ay, by) - height / 2 - 8;
+                    candidates.push([ax, (lo + hi) / 2]);
+                    for (let y = lo; y <= hi; y += height + 8) candidates.push([ax, y]);
+                }
+            }
+            const box = ([x, y]) => ({left: x - width / 2, right: x + width / 2, top: y - height / 2, bottom: y + height / 2});
+            const free = center => { const rect = box(center); return rect.left >= 4 && rect.right <= canvas.offsetWidth - 4 && !occupied.some(other => overlaps(rect, other)); };
+            let center = candidates.find(free);
+            if (!center) {
+                center = [Math.max(width / 2 + 8, left - width / 2 - 16), from.bottom + height / 2 + 7];
+                while (!free(center)) center[1] += height + 8;
+                layer.append(add('path', {d: `M ${x1} ${from.bottom + 4} L ${center[0]} ${center[1]}`, class: 'edge-label-leader', 'aria-hidden': 'true'}));
+            }
+            const rect = box(center);
+            occupied.push(rect);
+            label.setAttribute('x', rect.left); label.setAttribute('y', rect.top);
+            label.setAttribute('width', width); label.setAttribute('height', height);
+            relation.label = label;
+            pointer(label, relation);
         }
+        const bottom = Math.max(...[...positions.values()].map(rect => rect.bottom));
+        canvas.style.paddingBottom = Math.max(90, ...occupied.map(rect => rect.bottom - bottom + 12)) + 'px';
+        svg.setAttribute('height', canvas.offsetHeight);
     };
     return redraw;
 }
@@ -259,7 +327,7 @@ function graph(parent, model, overview = false) {
     value.setAttribute('aria-live', 'polite');
     for (const item of [minus, plus, reset]) item.type = 'button';
     controls.append(minus, value, plus, reset);
-    parent.append(element('p', 'Точка — начало перехода, наконечник — вход в блок. Подпись у точки относится к этой ветке. Пунктир ↶ — возврат по циклу. Скрытые внутри блока переходы видны после раскрытия. Размер области: потяните за правый нижний угол; масштаб содержимого не изменится.'));
+    parent.append(element('p', 'Точка — начало перехода, наконечник — вход в блок. Наведите на стрелку или её подпись, чтобы выделить связь и оба блока; Tab делает то же с клавиатуры. Пунктир ↶ — возврат по циклу. Скрытые внутри блока переходы видны после раскрытия. Размер области: потяните за правый нижний угол; масштаб содержимого не изменится.'));
     canvas.append(grid); world.append(canvas); viewport.append(world); parent.append(controls, viewport);
     const resizeWorld = () => {
         world.style.width = canvas.offsetWidth * scale + 'px';
@@ -268,7 +336,7 @@ function graph(parent, model, overview = false) {
     const redrawEdges = drawEdges(canvas, model.nodes, model.edges);
     let width, height;
     const redraw = () => {
-        resizeWorld(); redrawEdges();
+        redrawEdges(); resizeWorld();
         width = canvas.offsetWidth; height = canvas.offsetHeight;
     };
     redrawGraph = redraw;

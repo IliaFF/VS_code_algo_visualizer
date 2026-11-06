@@ -18,6 +18,7 @@ const expanded = bound.groups.map(group => group.id);
 const model = {type: 'analysis-state', data, bound, graph: projectGraph(bound, new Set(expanded)), expanded,
     route: {kind: 'section', id: bound.id}, activeNode: null, revision: 1,
     freshness: {'algorithm.cjs': 'same'}, loadError: '', actionError: '', canBack: false};
+const geometryData = parseAnalysis(fs.readFileSync(path.join(root, 'examples/geometry/analysis.json')));
 const json = value => JSON.stringify(value).replaceAll('<', '\\u003c');
 const driver = `
 window.addEventListener('load', async () => {
@@ -200,6 +201,87 @@ window.addEventListener('load', async () => {
         const topologyRoutes = [...topologySvg.querySelectorAll('.edge-path')];
         check(!topologyRoutes[0].classList.contains('edge-return'), 'upward transition without a cycle is not marked as loop');
         check(topologyRoutes[1].classList.contains('edge-return'), 'self-loop is marked as return');
+        window.postMessage({...browserState, data: geometryData, bound: null, graph: null, route: {kind: 'overview'}, activeNode: geometryData.overview.nodes[0].id}, '*');
+        await wait();
+        const overview = document.querySelector('.graph-canvas');
+        const overviewSvg = overview.querySelector('svg');
+        const overviewLabels = [...overviewSvg.querySelectorAll('.edge-label')];
+        const overlap = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        const checkOverviewLabels = () => {
+            const boxes = overviewLabels.map(label => label.getBoundingClientRect());
+            const cards = [...overview.querySelectorAll('.analysis-node')].map(card => card.getBoundingClientRect());
+            boxes.forEach((box, index) => {
+                check(boxes.slice(index + 1).every(other => !overlap(box, other)), 'geometry overview labels must not overlap each other');
+                check(cards.every(card => !overlap(box, card)), 'geometry overview labels must not cover cards');
+                check(overviewLabels[index].textContent === geometryData.overview.edges[index].label, 'full relation text preserved');
+            });
+        };
+        checkOverviewLabels();
+        const edgeControls = [...overviewSvg.querySelectorAll('.edge-control[tabindex="0"]')];
+        check(edgeControls.length === geometryData.overview.edges.length, 'each edge must be keyboard focusable');
+        const selection = [...overview.querySelectorAll('.selected')].map(card => card.dataset.node).join(',');
+        check(selection === geometryData.overview.nodes[0].id, 'preselected card present before edge interaction');
+        const messageCount = browserMessages.length;
+        const verifyHighlight = (control, edge) => {
+            check(overview.querySelector('.edge-source')?.dataset.node === edge.from, 'highlight exact source');
+            check(overview.querySelector('.edge-target')?.dataset.node === edge.to, 'highlight exact destination');
+            check(overview.querySelectorAll('.edge-source').length === 1 && overview.querySelectorAll('.edge-target').length === 1, 'no unrelated endpoints highlighted');
+            const path = overviewSvg.querySelector('.edge-highlight .edge-active-path');
+            check(path?.getAttribute('d') === control.querySelector('.edge-path').getAttribute('d'), 'highlight the complete original route without rerouting');
+            check(path.getAttribute('marker-end') === 'url(#analysis-arrow-active)', 'highlight arrowhead too');
+            check(getComputedStyle(overview.querySelector('.edge-source')).boxShadow !== 'none', 'source highlight must be visible');
+            check(getComputedStyle(overview.querySelector('.edge-target')).boxShadow !== 'none', 'destination highlight must be visible');
+            check([...overview.querySelectorAll('.selected')].map(card => card.dataset.node).join(',') === selection, 'edge hover/focus preserves selected node');
+            check(browserMessages.length === messageCount, 'edge hover/focus must not navigate or highlight editor code');
+        };
+        const verifyCleared = () => check(!overviewSvg.querySelector('.edge-highlight') && !overview.querySelector('.edge-source,.edge-target'), 'clear transient highlight');
+        edgeControls.forEach((control, index) => {
+            const edge = geometryData.overview.edges[index];
+            check(control.getAttribute('aria-label').includes(edge.label), 'accessible full relation label');
+            const hit = control.querySelector('.edge-hit');
+            check(hit && getComputedStyle(hit).pointerEvents === 'stroke', 'wide pointer hit area enabled');
+            control.dispatchEvent(new PointerEvent('pointerenter'));
+            verifyHighlight(control, edge);
+            control.dispatchEvent(new PointerEvent('pointerleave'));
+            verifyCleared();
+            overviewLabels[index].dispatchEvent(new PointerEvent('pointerenter'));
+            verifyHighlight(control, edge);
+            overviewLabels[index].dispatchEvent(new PointerEvent('pointerleave'));
+            verifyCleared();
+            control.focus();
+            check(document.activeElement === control, 'edge accepts keyboard focus');
+            verifyHighlight(control, edge);
+            control.blur();
+            verifyCleared();
+        });
+        for (let step = 0; step < 4; step++) control('Уменьшить граф').click();
+        await wait();
+        check(overview.dataset.scale === '0.6', 'overview exercised at 60% scale');
+        checkOverviewLabels();
+        const first = edgeControls[0];
+        first.dispatchEvent(new PointerEvent('pointerenter'));
+        verifyHighlight(first, geometryData.overview.edges[0]);
+        first.dispatchEvent(new PointerEvent('pointerleave'));
+        verifyCleared();
+        const area = overview.closest('.graph-viewport');
+        let pathReachable = false;
+        edgeControls.forEach((control, index) => {
+            const hit = control.querySelector('.edge-hit');
+            let reachable = false;
+            for (let distance = 12; distance < hit.getTotalLength() - 12 && (!reachable || !pathReachable); distance += 20) {
+                let point = hit.getPointAtLength(distance).matrixTransform(hit.getScreenCTM());
+                const box = area.getBoundingClientRect();
+                area.scrollLeft += point.x - (box.left + box.width / 2);
+                area.scrollTop += point.y - (box.top + box.height / 2);
+                point = hit.getPointAtLength(distance).matrixTransform(hit.getScreenCTM());
+                const target = document.elementFromPoint(point.x, point.y);
+                // A label on its own route is an equally valid pointer target, not an occluding card.
+                reachable ||= target?.closest('[data-edge]')?.getAttribute('data-edge') === String(index);
+                pathReachable ||= target?.closest('.edge-control') === control;
+            }
+            check(reachable, 'every relation must be reachable by a real pointer hit test at 60% scale');
+        });
+        check(pathReachable, 'visible arrow strokes, not only labels, must accept the pointer');
         report.ok = true;
     } catch (error) { report.error = error.message; }
     const output = document.createElement('pre'); output.id = 'scale-report'; output.hidden = true;
@@ -211,8 +293,8 @@ for (const [zoom, windowWidth, detailed] of [[1.25, 560], [1.25, 1280], [1, 560]
     const initial = detailed ? model : {...model, graph: projectGraph(bound, new Set()), expanded: []};
     let html = analysisHtml();
     const nonce = html.match(/script-src 'nonce-([^']+)'/)[1];
-    const stub = `const browserState=${json(initial)}; const foldedGraph=${json(projectGraph(bound, new Set()))};
-window.acquireVsCodeApi=()=>({postMessage(message){if(message.type==='ready')window.postMessage(browserState,'*');}});
+    const stub = `const browserState=${json(initial)}; const foldedGraph=${json(projectGraph(bound, new Set()))}; const geometryData=${json(geometryData)}; const browserMessages=[];
+window.acquireVsCodeApi=()=>({postMessage(message){browserMessages.push(message);if(message.type==='ready')window.postMessage(browserState,'*');}});
 window.matchMedia=()=>({matches:true});\n`;
     html = html.replace(`<script nonce="${nonce}">`, `<script nonce="${nonce}">${stub}`);
     html = html.replace('</body>', `<script nonce="${nonce}">${driver.replaceAll('ROOT_ZOOM', String(zoom))}</script></body>`);
