@@ -29,7 +29,8 @@ window.addEventListener('load', async () => {
     try {
         document.body.style.fontSize = '13px';
         document.body.style.zoom = ROOT_ZOOM;
-        await wait();
+        // Wait for webfont metrics: labels measured against fallback fonts drift and look overlapping.
+        await document.fonts.ready; await wait();
         const canvas = document.querySelector('.graph-canvas');
         const viewport = document.querySelector('.graph-viewport');
         const svg = canvas.querySelector('svg');

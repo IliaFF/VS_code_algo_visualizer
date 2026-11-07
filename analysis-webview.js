@@ -352,10 +352,9 @@ function graph(parent, model, overview = false) {
     };
     redrawGraph = redraw;
     graphObserver = new ResizeObserver(() => {
-        resizeWorld();
         if (width !== canvas.offsetWidth || height !== canvas.offsetHeight) redraw();
     });
-    graphObserver.observe(canvas); graphObserver.observe(viewport);
+    graphObserver.observe(canvas);
     redraw();
     viewport.scrollLeft = gutterX; viewport.scrollTop = gutterY;
     const update = () => {
