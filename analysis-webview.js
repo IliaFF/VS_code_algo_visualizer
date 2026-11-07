@@ -5,6 +5,7 @@ const byId = id => document.getElementById(id);
 let state;
 let graphObserver;
 let redrawGraph;
+let syncGutter;
 let inputController;
 let dragging = false;
 let detailTarget;
@@ -330,10 +331,19 @@ function graph(parent, model, overview = false) {
     controls.append(minus, value, plus, reset);
     parent.append(element('p', 'Точка — начало перехода, наконечник — вход в блок. Наведите на стрелку или её подпись, чтобы выделить связь и оба блока; Tab делает то же с клавиатуры. Пунктир ↶ — возврат по циклу. Скрытые внутри блока переходы видны после раскрытия. Размер области: потяните за правый нижний угол; масштаб содержимого не изменится.'));
     canvas.append(grid); world.append(canvas); viewport.append(world); parent.append(controls, viewport);
+    let gutterX = 0, gutterY = 0;
+    // Пустое поле вокруг графа размером с область просмотра: позволяет увести точку обзора за край.
     const resizeWorld = () => {
-        world.style.width = canvas.offsetWidth * scale + 'px';
-        world.style.height = canvas.offsetHeight * scale + 'px';
+        const nextX = viewport.offsetWidth, nextY = viewport.offsetHeight;
+        world.style.width = canvas.offsetWidth * scale + 2 * nextX + 'px';
+        world.style.height = canvas.offsetHeight * scale + 2 * nextY + 'px';
+        canvas.style.left = nextX + 'px'; canvas.style.top = nextY + 'px';
+        if (gutterX) {
+            viewport.scrollLeft += nextX - gutterX; viewport.scrollTop += nextY - gutterY;
+        }
+        gutterX = nextX; gutterY = nextY;
     };
+    syncGutter = resizeWorld;
     const redrawEdges = drawEdges(canvas, model.nodes, model.edges);
     let width, height;
     const redraw = () => {
@@ -342,21 +352,23 @@ function graph(parent, model, overview = false) {
     };
     redrawGraph = redraw;
     graphObserver = new ResizeObserver(() => {
+        resizeWorld();
         if (width !== canvas.offsetWidth || height !== canvas.offsetHeight) redraw();
     });
-    graphObserver.observe(canvas);
+    graphObserver.observe(canvas); graphObserver.observe(viewport);
     redraw();
+    viewport.scrollLeft = gutterX; viewport.scrollTop = gutterY;
     const update = () => {
         value.textContent = Math.round(scale * 100) + '%';
         minus.disabled = scale <= .25; plus.disabled = scale >= 2;
     };
     const zoom = (next, x = viewport.clientWidth / 2, y = viewport.clientHeight / 2) => {
-        const point = {x: (viewport.scrollLeft + x) / scale, y: (viewport.scrollTop + y) / scale};
+        const point = {x: (viewport.scrollLeft + x - gutterX) / scale, y: (viewport.scrollTop + y - gutterY) / scale};
         scale = Math.max(.25, Math.min(2, Math.round(next * 100) / 100));
         scales.set(key, scale);
         canvas.dataset.scale = String(scale); canvas.style.transform = `scale(${scale})`;
         resizeWorld(); update();
-        viewport.scrollLeft = point.x * scale - x; viewport.scrollTop = point.y * scale - y;
+        viewport.scrollLeft = point.x * scale + gutterX - x; viewport.scrollTop = point.y * scale + gutterY - y;
     };
     minus.addEventListener('click', () => zoom(scale - .1));
     plus.addEventListener('click', () => zoom(scale + .1));
@@ -386,7 +398,7 @@ function graph(parent, model, overview = false) {
         viewport.scrollLeft = drag.left - (event.clientX - drag.x);
         viewport.scrollTop = drag.top - (event.clientY - drag.y);
     }, {signal});
-    window.addEventListener('mouseup', event => { if (event.button === 1) endDrag(); }, {signal});
+    window.addEventListener('mouseup', event => { if (event.button === 1) endDrag(); resizeWorld(); }, {signal});
     window.addEventListener('blur', endDrag, {signal});
     if (model.edges.length) {
         const relations = element('details');
@@ -533,6 +545,7 @@ function render() {
     if (viewport && viewportSize) {
         viewport.style.width = viewportSize.width; viewport.style.height = viewportSize.height;
     }
+    if (viewport) syncGutter?.();
     if (viewport && camera) {
         viewport.scrollLeft = camera.left; viewport.scrollTop = camera.top;
     }
@@ -568,7 +581,7 @@ function revealSelection(initial = false) {
     const dy = delta(rect.top, rect.bottom, box.top + viewport.clientTop, box.top + viewport.clientTop + viewport.clientHeight);
     if (dx || dy) viewport.scrollTo({left: viewport.scrollLeft + dx, top: viewport.scrollTop + dy, behavior: motion()});
 }
-window.addEventListener('resize', () => { if (state) { fitViewport(); if (!dragging) revealSelection(); } });
+window.addEventListener('resize', () => { if (state) { syncGutter?.(); fitViewport(); if (!dragging) revealSelection(); } });
 for (const type of ['back', 'overview', 'reload']) byId(type).addEventListener('click', () => send(type));
 window.addEventListener('message', event => {
     if (event.data?.type !== 'analysis-state') return;

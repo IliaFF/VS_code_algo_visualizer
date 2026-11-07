@@ -130,7 +130,8 @@ window.addEventListener('load', async () => {
                 check(Math.abs(start.x - from.left - from.width * ports[i].source) < tolerance && Math.abs(start.y - from.bottom) < tolerance, label + ': detached source ' + link.from);
                 check(Math.abs(end.x - to.left - to.width * ports[i].target) < tolerance && Math.abs(end.y - to.top + 3 * scale * ROOT_ZOOM) < tolerance, label + ': detached target ' + link.to);
             });
-            check(Math.abs(viewport.scrollWidth - Math.max(viewport.clientWidth, Math.ceil(canvas.offsetWidth * scale))) < 3, label + ': scroll area must follow scaled graph');
+            check(Math.abs(viewport.scrollWidth - (Math.ceil(canvas.offsetWidth * scale) + 2 * viewport.offsetWidth)) < 3, label + ': scroll area follows scaled graph plus free space');
+            check(Math.abs(viewport.scrollHeight - (Math.ceil(canvas.offsetHeight * scale) + 2 * viewport.offsetHeight)) < 3, label + ': scroll height follows scaled graph plus free space');
         };
         verify('100%');
         for (const [label, count] of [['Уменьшить граф', 4], ['Увеличить граф', 4], ['Уменьшить граф', 8], ['Увеличить граф', 5], ['Увеличить граф', 13], ['Уменьшить граф', 18]]) {
@@ -152,7 +153,7 @@ window.addEventListener('load', async () => {
         check(getComputedStyle(viewport).resize === 'both', 'native two-axis resize enabled');
         for (const [width, height] of [[380, 320], [1, 1], [10000, 10000], [450, 360]]) {
             viewport.style.width = width + 'px'; viewport.style.height = height + 'px';
-            await wait();
+            window.dispatchEvent(new Event('mouseup')); await wait();
             check(Math.abs(viewport.offsetWidth - Math.max(Math.min(280, availableWidth), Math.min(width, availableWidth))) <= 2, 'width limits: ' + width);
             check(Math.abs(viewport.offsetHeight - Math.max(Math.min(240, innerHeight * .8), Math.min(height, innerHeight * .8))) <= 2, 'height limits: ' + height);
             check(document.documentElement.scrollWidth <= innerWidth + 2, 'resize must not overflow the page horizontally');
