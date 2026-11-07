@@ -126,7 +126,8 @@ function nodeCard(node, overview, group) {
         return item;
     }
     if (!overview) {
-        const selected = node.id === state.activeNode || group?.id === state.activeNode;
+        const selected = node.id === state.activeNode || group?.id === state.activeNode
+            || node.collapsed && node.nodes?.includes(state.activeNode);
         item.setAttribute('aria-pressed', String(selected));
         if (selected) item.classList.add('selected');
         item.addEventListener('mouseenter', () => send('hover', node.id));
@@ -327,8 +328,13 @@ function graph(parent, model, overview = false) {
     reset.setAttribute('aria-label', 'Сбросить масштаб до 100%');
     const value = element('output');
     value.setAttribute('aria-live', 'polite');
-    for (const item of [minus, plus, reset]) item.type = 'button';
-    controls.append(minus, value, plus, reset);
+    const freeze = element('button', 'Фиксировать детали');
+    freeze.dataset.action = 'lock-detail';
+    freeze.setAttribute('aria-pressed', String(!!state.detailLocked));
+    freeze.title = 'Не раскрывать блоки при движении по коду';
+    freeze.addEventListener('click', () => send('lock-detail'));
+    for (const item of [minus, plus, reset, freeze]) item.type = 'button';
+    controls.append(minus, value, plus, reset, freeze);
     parent.append(element('p', 'Точка — начало перехода, наконечник — вход в блок. Наведите на стрелку или её подпись, чтобы выделить связь и оба блока; Tab делает то же с клавиатуры. Пунктир ↶ — возврат по циклу. Скрытые внутри блока переходы видны после раскрытия. Размер области: потяните за правый нижний угол; масштаб содержимого не изменится.'));
     canvas.append(grid); world.append(canvas); viewport.append(world); parent.append(controls, viewport);
     let gutterX = 0, gutterY = 0;
@@ -423,7 +429,9 @@ function entries(parent, items) {
 }
 function markSelection() {
     for (const card of document.querySelectorAll('.graph-grid .analysis-node,.operation-list .analysis-node')) {
-        const selected = card.dataset.node === state.activeNode || groupOwners.get(card.dataset.node) === state.activeNode;
+        // A collapsed block stands for its hidden children, also when the detail is locked.
+        const selected = card.dataset.node === state.activeNode || groupOwners.get(card.dataset.node) === state.activeNode
+            || !!state.bound?.groups?.some(group => group.id === card.dataset.node && group.nodes.includes(state.activeNode));
         card.classList.toggle('selected', selected);
         card.querySelector('[data-action="inspect"]')?.setAttribute('aria-pressed', String(selected));
     }
@@ -472,7 +480,7 @@ function animateGraph(previous, owners) {
     });
 }
 function render() {
-    const key = JSON.stringify([state.route, state.data, state.bound, state.graph, state.expanded, state.freshness, state.loadError, state.actionError]);
+    const key = JSON.stringify([state.route, state.data, state.bound, state.graph, state.expanded, state.detailLocked, state.freshness, state.loadError, state.actionError]);
     const sameRoute = renderedRoute === routeKey();
     byId('back').disabled = !state.canBack;
     if (key === layoutKey) {

@@ -325,6 +325,33 @@ test('Блоки раскрываются, сворачиваются и выб�
     assert.equal(h.state(), previous);
 });
 
+test('Фиксация детализации не раскрывает блоки при движении по коду', async t => {
+    const h = await harness(t);
+    await h.send('section', 'sum-positive');
+    await h.send('inspect', 'iteration');
+    await h.send('reveal', 'iteration');
+    await h.send('collapse-all');
+    await h.send('lock-detail');
+    assert.equal(h.state().detailLocked, true);
+    const read = h.state().bound.nodes.find(node => node.id === 'read');
+    h.move(h.editors[0], read.binding);
+    assert.equal(h.state().activeNode, 'read', 'the node is still highlighted');
+    assert.equal(h.state().graph.nodes.length, 4, 'locked detail keeps the block collapsed');
+    assert.ok(!h.state().expanded.includes('iteration'));
+    await h.send('toggle-group', 'iteration');
+    assert.ok(h.state().expanded.includes('iteration'), 'explicit expand still works while locked');
+    await h.send('overview');
+    assert.equal(h.state().detailLocked, true, 'the lock survives navigation');
+    await h.send('section', 'sum-positive');
+    await h.send('expand-all');
+    assert.equal(h.state().expanded.length, h.state().bound.groups.length, 'expand-all still opens every block while locked');
+    await h.send('collapse-all');
+    await h.send('lock-detail');
+    assert.equal(h.state().detailLocked, false);
+    h.move(h.editors[0], read.binding);
+    assert.ok(h.state().expanded.includes('iteration'), 'unlocked selection expands the block again');
+});
+
 test('Узел нескольких файлов предлагает выбор и не подсвечивает произвольный первый файл', async t => {
     const h = await harness(t);
     const data = structuredClone(h.state().data);

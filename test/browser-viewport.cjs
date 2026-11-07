@@ -36,6 +36,22 @@ window.addEventListener('load', async () => {
         check(getComputedStyle(viewport).resize === 'both', 'native resize enabled');
         viewport.style.width = '450px'; viewport.style.height = '360px';
         await wait();
+        const lock = () => document.querySelector('[data-action="lock-detail"]');
+        check(lock()?.getAttribute('aria-pressed') === 'false', 'detail lock starts off');
+        lock().click(); await wait();
+        check(window.browserMessages.some(message => message.type === 'lock-detail'), 'detail lock asks the host');
+        await send({...browserState, detailLocked: true});
+        check(lock()?.getAttribute('aria-pressed') === 'true', 'locked state is visible');
+        await send(browserState);
+        check(lock()?.getAttribute('aria-pressed') === 'false', 'unlocked state is visible');
+        await send({...browserState, graph: foldedGraph, expanded: [], activeNode: childNode, detailLocked: true});
+        check(document.querySelector('.analysis-node.selected')?.dataset.node === childGroup, 'locked detail highlights the collapsed block');
+        const overviewData = {...browserState.data, overview: {edges: [], nodes: [
+            {id: 'overview-a', title: 'A', summary: 'a', target: {section: browserState.bound.id}},
+            {id: 'overview-b', title: 'B', summary: 'b', target: {path: browserState.bound.file}}]}};
+        await send({...browserState, data: overviewData, bound: null, graph: null, route: {kind: 'overview'}, activeNode: 'overview-a'});
+        check([...document.querySelectorAll('.analysis-node.selected')].map(card => card.dataset.node).join(',') === 'overview-a', 'the overview selects only its active card');
+        await send(browserState);
         await send({...browserState, activeNode: browserState.graph.nodes[0].id}); verify('node selection');
         await send({...browserState, graph: foldedGraph, expanded: []}); verify('fold');
         await send(browserState); verify('unfold');
@@ -90,8 +106,9 @@ console.log('Artifacts:', work);
 for (const width of [560, 1280]) {
     let html = analysisHtml();
     const nonce = html.match(/script-src 'nonce-([^']+)'/)[1];
-    const stub = `const browserState=${json(model)}; const foldedGraph=${json(projectGraph(bound, new Set()))};
-window.acquireVsCodeApi=()=>({postMessage(message){if(message.type==='ready')window.postMessage(browserState,'*');}});
+    const stub = `const browserState=${json(model)}; const foldedGraph=${json(projectGraph(bound, new Set()))}; const childNode=${json(bound.groups[0].nodes[0])}; const childGroup=${json(bound.groups[0].id)};
+window.browserMessages=[];
+window.acquireVsCodeApi=()=>({postMessage(message){window.browserMessages.push(message);if(message.type==='ready')window.postMessage(browserState,'*');}});
 window.matchMedia=()=>({matches:true});\n`;
     html = html.replace(`<script nonce="${nonce}">`, `<script nonce="${nonce}">${stub}`);
     html = html.replace('</body>', `<script nonce="${nonce}">${driver}</script></body>`);

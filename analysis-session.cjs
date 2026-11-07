@@ -48,6 +48,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
     let highlighted;
     let loadError = '';
     let actionError = '';
+    let detailLocked = false;
     let column = vscode.window.activeTextEditor?.viewColumn || vscode.ViewColumn.One;
     const history = [];
     const expanded = new Map();
@@ -78,7 +79,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
             const resolved = file?.document ? resolveSection(file.document.getText(), {...source, nodes: []}) : {bindingError: file?.error || 'Файл недоступен'};
             return {...source, binding: resolved.binding, bindingError: resolved.bindingError};
         })]));
-        panel.webview.postMessage({type: 'analysis-state', revision, data, route, bound, activeNode, fromEditor, overviewCode,
+        panel.webview.postMessage({type: 'analysis-state', revision, data, route, bound, activeNode, detailLocked, fromEditor, overviewCode,
             graph: bound?.layout === 'graph' ? projectGraph(bound, openGroups()) : undefined, expanded: bound ? [...openGroups()] : [],
             canBack: history.length > 0, loadError, actionError,
             freshness: Object.fromEntries(data.entries.filter(item => item.kind === 'file').map(entry => {
@@ -121,7 +122,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
                 if (nodes.length === 1) {
                     activeNode = nodes[0].id;
                     const owner = bound.groups?.find(group => group.id && group.nodes.includes(activeNode));
-                    if (owner) openGroups().add(owner.id);
+                    if (owner && !detailLocked) openGroups().add(owner.id);
                 } else if (!nodes.length) {
                     const groups = (bound.groups || []).filter(group => group.id && group.binding && contains(group.binding, selection));
                     if (groups.length === 1) activeNode = groups[0].id;
@@ -194,6 +195,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
             if (message.type === 'path' && data.entries.some(entry => entry.path === message.id)) return navigate({kind: 'path', id: message.id});
             if (message.type === 'section' && data.sections.some(item => item.id === message.id)) return navigate({kind: 'section', id: message.id});
             if (message.type === 'clear') { ++epoch; return clear(); }
+            if (message.type === 'lock-detail') { detailLocked = !detailLocked; return send(); }
             if (route.kind === 'overview' && ['overview-inspect', 'overview-hover', 'overview-reveal'].includes(message.type)) {
                 const node = data.overview.nodes.find(item => item.id === message.id);
                 if (!node) return;
