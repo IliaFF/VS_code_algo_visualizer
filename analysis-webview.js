@@ -10,6 +10,7 @@ let dragging = false;
 let detailTarget;
 let layoutKey;
 let renderedRoute;
+let viewportSize;
 let groupOwners = new Map();
 const routeKey = () => state.route.kind + ':' + (state.route.id || '');
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -469,7 +470,8 @@ function render() {
         return;
     }
     const oldViewport = document.querySelector('.graph-viewport');
-    const camera = sameRoute && oldViewport ? {left: oldViewport.scrollLeft, top: oldViewport.scrollTop, width: oldViewport.style.width, height: oldViewport.style.height} : null;
+    if (oldViewport) viewportSize = {width: oldViewport.style.width, height: oldViewport.style.height};
+    const camera = sameRoute && oldViewport ? {left: oldViewport.scrollLeft, top: oldViewport.scrollTop} : null;
     const previous = new Map(sameRoute ? [...document.querySelectorAll('.graph-grid .analysis-node')].map(item => [item.dataset.node, {item, rect: item.getBoundingClientRect()}]) : []);
     const owners = groupOwners;
     groupOwners = new Map((state.bound?.groups || []).filter(group => group.id).flatMap(group => group.nodes.map(id => [id, group.id])));
@@ -528,8 +530,10 @@ function render() {
     showDetail();
     const viewport = document.querySelector('.graph-viewport');
     fitViewport();
+    if (viewport && viewportSize) {
+        viewport.style.width = viewportSize.width; viewport.style.height = viewportSize.height;
+    }
     if (viewport && camera) {
-        viewport.style.width = camera.width; viewport.style.height = camera.height;
         viewport.scrollLeft = camera.left; viewport.scrollTop = camera.top;
     }
     markSelection();
