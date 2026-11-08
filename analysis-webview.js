@@ -341,9 +341,7 @@ function graph(parent, model, overview = false) {
     freeze.addEventListener('click', () => send('lock-detail'));
     const unfold = element('button', 'Раскрыть подробности');
     unfold.dataset.action = 'expand-active';
-    unfold.title = 'Показать малые узлы внутри блока с выбранным узлом';
-    const owner = (state.bound?.groups || []).find(group => group.id && state.activeNode && group.nodes.includes(state.activeNode));
-    unfold.disabled = !owner || (state.expanded || []).includes(owner.id);
+    unfold.title = 'Открыть раздел выбранной карточки обзора или раскрыть выбранный блок';
     unfold.addEventListener('click', () => send('expand-active'));
     for (const item of [minus, plus, reset, freeze, unfold]) item.type = 'button';
     controls.append(minus, value, plus, reset, freeze, unfold);
@@ -440,6 +438,12 @@ function entries(parent, items) {
     parent.append(list);
 }
 function markSelection() {
+    const unfold = document.querySelector('[data-action="expand-active"]');
+    if (unfold) {
+        const section = state.route.kind === 'overview' && state.data.overview.nodes.find(node => node.id === state.activeNode)?.target.section;
+        const owner = (state.bound?.groups || []).find(group => group.id && (group.id === state.activeNode || group.nodes.includes(state.activeNode)));
+        unfold.disabled = !section && (!owner || (state.expanded || []).includes(owner.id));
+    }
     for (const card of document.querySelectorAll('.graph-grid .analysis-node,.operation-list .analysis-node')) {
         // A collapsed block stands for its hidden children, also when the detail is locked.
         const selected = card.dataset.node === state.activeNode || groupOwners.get(card.dataset.node) === state.activeNode

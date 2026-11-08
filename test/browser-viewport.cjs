@@ -48,6 +48,9 @@ window.addEventListener('load', async () => {
         check(lock()?.getAttribute('aria-pressed') === 'false', 'unlocked state is visible');
         await send({...browserState, graph: foldedGraph, expanded: [], activeNode: childNode, detailLocked: true});
         check(document.querySelector('.analysis-node.selected')?.dataset.node === childGroup, 'locked detail highlights the collapsed block');
+        await send({...browserState, graph: foldedGraph, expanded: [], activeNode: null, detailLocked: true});
+        check(unfold()?.disabled === true, 'clearing selection disables unfolding without a layout change');
+        await send({...browserState, graph: foldedGraph, expanded: [], activeNode: childNode, detailLocked: true});
         check(unfold()?.disabled === false, 'a folded block with the active node can be unfolded by the button');
         unfold().click(); await wait();
         check(window.browserMessages.some(message => message.type === 'expand-active'), 'the unfolding button asks the host');
@@ -56,6 +59,11 @@ window.addEventListener('load', async () => {
             {id: 'overview-b', title: 'B', summary: 'b', target: {path: browserState.bound.file}}]}};
         await send({...browserState, data: overviewData, bound: null, graph: null, route: {kind: 'overview'}, activeNode: 'overview-a'});
         check([...document.querySelectorAll('.analysis-node.selected')].map(card => card.dataset.node).join(',') === 'overview-a', 'the overview selects only its active card');
+        check(unfold()?.disabled === false, 'the selected overview card can open details');
+        await send({...browserState, data: overviewData, bound: null, graph: null, route: {kind: 'overview'}, activeNode: null});
+        check(unfold()?.disabled === true, 'unselected overview disables details without changing layout');
+        await send({...browserState, data: overviewData, bound: null, graph: null, route: {kind: 'overview'}, activeNode: 'overview-a'});
+        check(unfold()?.disabled === false, 'cursor selection enables overview details without changing layout');
         await send(browserState);
         await send({...browserState, activeNode: browserState.graph.nodes[0].id}); verify('node selection');
         await send({...browserState, graph: foldedGraph, expanded: []}); verify('fold');

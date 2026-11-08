@@ -58,7 +58,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
     };
     const subscriptions = [];
     const section = () => data.sections.find(item => item.id === route.id);
-    // Moving through the code opens a section folded; the active block still gets highlighted.
+    // Locked manual navigation and section changes start with folded groups.
     const foldSection = () => {
         if (route.kind === 'section') openGroups().clear();
     };
@@ -66,6 +66,13 @@ async function createAnalysisSession(vscode, root, analysisUri) {
         highlighted?.setDecorations(decoration, []);
         highlighted = undefined;
     };
+    function highlight(editor, binding) {
+        const range = new vscode.Range(binding.start.line, binding.start.character, binding.end.line, binding.end.character);
+        clear();
+        editor.setDecorations(decoration, [range]);
+        highlighted = editor;
+        return range;
+    }
     function rebind() {
         bound = undefined;
         const selected = route.kind === 'section' && section();
@@ -109,7 +116,23 @@ async function createAnalysisSession(vscode, root, analysisUri) {
         activeNode = null;
         const selection = selections.length === 1 && selections[0];
         const matches = [];
-        if (selection?.start && selection?.end) {
+        if (selection?.start && selection?.end && route.kind === 'overview') {
+            const nodes = data.overview.nodes.flatMap(node => {
+                for (const source of overviewSources(data, node)) {
+                    const file = files.get(source.file);
+                    if (!file?.document || file.uri.toString() !== editor.document.uri.toString()) continue;
+                    const resolved = resolveSection(editor.document.getText(), {...source, nodes: []});
+                    if (resolved.binding && contains(resolved.binding, selection)) return [{id: node.id, binding: resolved.binding}];
+                }
+                return [];
+            });
+            if (nodes.length === 1) {
+                activeNode = nodes[0].id;
+                column = editor.viewColumn || column;
+                highlight(editor, nodes[0].binding);
+            }
+        }
+        if (selection?.start && selection?.end && route.kind === 'section') {
             for (const candidate of data.sections) {
                 const file = files.get(candidate.file);
                 if (!file?.document || file.uri.toString() !== editor.document.uri.toString()) continue;
@@ -123,15 +146,21 @@ async function createAnalysisSession(vscode, root, analysisUri) {
                 if (switching) history.push({...route});
                 route = {kind: 'section', id: selected.id};
                 bound = selected;
-                foldSection();
+                if (switching && detailLocked) foldSection();
                 column = editor.viewColumn || column;
                 const nodes = bound.nodes.filter(node => node.binding && contains(node.binding, selection));
                 if (nodes.length === 1) {
                     activeNode = nodes[0].id;
-                } else if (!nodes.length) {
-                    const groups = (bound.groups || []).filter(group => group.id && group.binding && contains(group.binding, selection));
+                } else {
+                    const groups = (bound.groups || []).filter(group => group.id && group.binding && contains(group.binding, selection)
+                        && (!nodes.length || !openGroups().has(group.id) && nodes.every(node => group.nodes.includes(node.id))));
                     if (groups.length === 1) activeNode = groups[0].id;
                 }
+                const group = (bound.groups || []).find(item => item.id && !openGroups().has(item.id)
+                    && (item.id === activeNode || item.nodes.includes(activeNode)));
+                const target = group || bound.nodes.find(node => node.id === activeNode)
+                    || (bound.groups || []).find(item => item.id === activeNode);
+                if (target?.binding) highlight(editor, target.binding);
             }
         }
         send(true);
@@ -158,11 +187,8 @@ async function createAnalysisSession(vscode, root, analysisUri) {
         let editor = vscode.window.visibleTextEditors.find(item => item.document === file.document && item.viewColumn === column);
         if (!hover) editor = await vscode.window.showTextDocument(file.document, {viewColumn: column, preserveFocus: true, preview: false});
         if (disposed || current !== epoch || version !== file.document.version || !editor) return;
-        const range = new vscode.Range(resolved.start.line, resolved.start.character, resolved.end.line, resolved.end.character);
-        clear();
-        editor.setDecorations(decoration, [range]);
+        const range = highlight(editor, resolved);
         if (!hover) editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-        highlighted = editor;
     }
     const reveal = (node, callee = false, hover = false) => callee
         ? revealSource(node.callee, hover)
@@ -202,7 +228,12 @@ async function createAnalysisSession(vscode, root, analysisUri) {
             if (message.type === 'clear') { ++epoch; return clear(); }
             if (message.type === 'lock-detail') { detailLocked = !detailLocked; return send(); }
             if (message.type === 'expand-active') {
-                const owner = (bound?.groups || []).find(group => group.id && group.nodes.includes(activeNode));
+                if (route.kind === 'overview') {
+                    const node = data.overview.nodes.find(item => item.id === activeNode);
+                    if (node?.target.section) return navigate({kind: 'section', id: node.target.section});
+                    return;
+                }
+                const owner = (bound?.groups || []).find(group => group.id && (group.id === activeNode || group.nodes.includes(activeNode)));
                 if (!owner) return;
                 openGroups().add(owner.id);
                 return send();

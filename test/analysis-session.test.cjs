@@ -118,6 +118,65 @@ test('JSON-сессия: обзор → раздел → код, свойств�
     assert.equal(h.editors[0].decorations.length, 0);
 });
 
+test('Курсор сохраняет обзор и выбирает карточку раздела без групп', async t => {
+    const h = await harness(t, async root => {
+        const file = path.join(root, 'analysis.json');
+        const data = JSON.parse(await fs.readFile(file, 'utf8'));
+        delete data.sections[0].groups;
+        await fs.writeFile(file, JSON.stringify(data));
+    });
+    const section = resolveSection(h.doc.text, h.state().data.sections[0]);
+    const read = section.nodes.find(node => node.id === 'read');
+    const editor = await h.vscode.window.showTextDocument(h.doc, {preserveFocus: true});
+    const position = {start: read.binding.start, end: read.binding.start};
+    h.move(editor, position);
+    assert.equal(h.state().route.kind, 'overview');
+    assert.equal(h.state().activeNode, h.state().data.overview.nodes.find(node => node.target.section === section.id).id);
+    assert.equal(h.state().bound, undefined, 'the detailed graph is not opened');
+    assert.deepEqual({...editor.decorations[0]}, section.binding, 'the whole overview block is highlighted in code');
+    assert.equal(editor.selection, position, 'the cursor selection is untouched');
+    assert.equal(editor.reveals.length, 0, 'following the cursor does not scroll the editor');
+    await h.send('expand-active');
+    assert.equal(h.state().route.id, section.id, 'details open only on explicit request');
+    h.move(editor, position);
+    assert.equal(h.state().route.id, section.id);
+    assert.equal(h.state().activeNode, 'read');
+    await h.send('back');
+    assert.equal(h.state().route.kind, 'overview');
+    h.move(editor, position, true);
+    assert.equal(h.state().activeNode, null);
+    assert.equal(h.state().route.kind, 'overview');
+    assert.equal(editor.decorations.length, 0, 'multiple cursors clear the highlight');
+});
+
+test('Обзор запоминает группу редактора, откуда пришёл курсор', async t => {
+    const h = await harness(t);
+    const editor = await h.vscode.window.showTextDocument(h.doc, {preserveFocus: true});
+    editor.viewColumn = 2;
+    const section = resolveSection(h.doc.text, h.state().data.sections[0]);
+    h.move(editor, section.nodes.find(node => node.id === 'read').binding);
+    const id = h.state().activeNode;
+    await h.send('overview-reveal', id);
+    assert.equal(h.calls.at(-1).viewColumn, 2, 'code opens in the group under the cursor');
+});
+
+test('Неоднозначная карточка обзора не выбирается по коду', async t => {
+    const h = await harness(t, async root => {
+        const file = path.join(root, 'analysis.json');
+        const data = JSON.parse(await fs.readFile(file, 'utf8'));
+        data.overview.nodes.push({...data.overview.nodes[0], id: 'duplicate', column: 5});
+        await fs.writeFile(file, JSON.stringify(data));
+    });
+    const section = resolveSection(h.doc.text, h.state().data.sections[0]);
+    const editor = await h.vscode.window.showTextDocument(h.doc, {preserveFocus: true});
+    h.move(editor, section.nodes.find(node => node.id === 'read').binding);
+    assert.equal(h.state().route.kind, 'overview');
+    assert.equal(h.state().activeNode, null);
+    assert.equal(editor.decorations.length, 0, 'ambiguous overview has no code highlight');
+    await h.send('expand-active');
+    assert.equal(h.state().route.kind, 'overview');
+});
+
 test('JSON-сессия: курсор, несколько выделений, локальная неоднозначность и возврат из функции', async t => {
     const h = await harness(t);
     await h.send('section', 'sum-positive');
@@ -305,14 +364,19 @@ test('Блоки раскрываются, сворачиваются и выб�
     h.move(h.editors[0], read.binding);
     assert.equal(h.state().activeNode, 'read');
     assert.equal(h.calls.length, calls);
+    assert.deepEqual({...h.editors[0].decorations[0]}, read.binding, 'expanded detail highlights the small node');
     await h.send('collapse-all');
     assert.equal(h.state().activeNode, 'iteration');
     assert.equal(h.state().graph.nodes.length, 4);
     h.move(h.editors[0], read.binding);
     assert.ok(!h.state().expanded.includes('iteration'), 'code selection does not unfold the hidden child');
     assert.equal(h.state().activeNode, 'read');
+    assert.deepEqual({...h.editors[0].decorations[0]}, group.binding, 'a hidden child highlights the whole collapsed block');
     h.move(h.editors[0], group.binding);
     assert.equal(h.state().activeNode, 'iteration');
+    assert.deepEqual({...h.editors[0].decorations[0]}, group.binding, 'the group range highlights the same block');
+    h.move(h.editors[0], {start: {line: 0, character: 0}, end: {line: 0, character: 0}});
+    assert.equal(h.editors[0].decorations.length, 0, 'leaving the section clears its highlight');
     await h.send('expand-all');
     assert.equal(h.state().graph.nodes.length, 14);
     assert.equal(h.state().graph.edges.length, 16);
@@ -324,6 +388,27 @@ test('Блоки раскрываются, сворачиваются и выб�
     const previous = h.state();
     await h.send('toggle-group', 'missing');
     assert.equal(h.state(), previous);
+});
+
+test('Свёрнутый блок подсвечивается и при пересечении диапазонов его малых узлов', async t => {
+    const h = await harness(t, async root => {
+        const file = path.join(root, 'analysis.json');
+        const data = JSON.parse(await fs.readFile(file, 'utf8'));
+        const nodes = data.sections[0].nodes;
+        nodes.find(node => node.id === 'add').range = nodes.find(node => node.id === 'read').range;
+        await fs.writeFile(file, JSON.stringify(data));
+    });
+    await h.send('section', 'sum-positive');
+    await h.send('reveal-section');
+    const group = h.state().bound.groups.find(item => item.id === 'iteration');
+    const read = h.state().bound.nodes.find(node => node.id === 'read');
+    h.move(h.editors[0], read.binding);
+    assert.equal(h.state().activeNode, group.id, 'the visible block is unambiguous');
+    assert.deepEqual({...h.editors[0].decorations[0]}, group.binding);
+    await h.send('expand-all');
+    h.move(h.editors[0], read.binding);
+    assert.equal(h.state().activeNode, null, 'overlapping visible nodes remain ambiguous');
+    assert.equal(h.editors[0].decorations.length, 0);
 });
 
 test('Фиксация детализации не раскрывает блоки при движении по коду', async t => {
@@ -354,15 +439,14 @@ test('Фиксация детализации не раскрывает блок
     assert.equal(h.state().activeNode, 'read');
 });
 
-test('Код открывает раздел свёрнутым, разворот — отдельной командой', async t => {
+test('Курсор сохраняет уровень раскрытия раздела, подробности открываются явно', async t => {
     const h = await harness(t);
     await h.send('section', 'sum-positive');
-    await h.send('expand-all');
     await h.send('section', 'is-positive');
-    const read = h.state().data.sections.find(section => section.id === 'sum-positive').nodes.find(node => node.id === 'read');
     const file = await h.vscode.workspace.openTextDocument(h.vscode.Uri.file(path.join(h.root, 'algorithm.cjs')));
     await h.vscode.window.showTextDocument(file, {preserveFocus: true});
-    h.move(h.editors[0], {start: read.range.start && {line: 10, character: 8}, end: {line: 10, character: 36}});
+    const read = resolveSection(file.getText(), h.state().data.sections.find(section => section.id === 'sum-positive')).nodes.find(node => node.id === 'read');
+    h.move(h.editors[0], read.binding);
     assert.equal(h.state().route.id, 'sum-positive', 'the code switches to its section');
     assert.equal(h.state().activeNode, 'read');
     assert.deepEqual(h.state().expanded, [], 'the section opens folded');
@@ -370,9 +454,9 @@ test('Код открывает раздел свёрнутым, разворо�
     await h.send('expand-active');
     assert.deepEqual(h.state().expanded, ['iteration'], 'the explicit command reveals the block');
     assert.equal(h.state().graph.nodes.length, 12);
-    h.move(h.editors[0], {start: {line: 10, character: 8}, end: {line: 10, character: 36}});
-    assert.deepEqual(h.state().expanded, [], 'moving inside the section folds it again');
-    assert.equal(h.state().activeNode, 'read', 'the folded block is still highlighted');
+    h.move(h.editors[0], read.binding);
+    assert.deepEqual(h.state().expanded, ['iteration'], 'moving inside the section preserves explicit expansion');
+    assert.equal(h.state().activeNode, 'read', 'the selected node stays highlighted');
 });
 
 test('При фиксации новый раздел открывается свёрнутым и подсвечивает блок узла', async t => {
