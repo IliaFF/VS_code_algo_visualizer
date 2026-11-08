@@ -370,6 +370,9 @@ test('Код открывает раздел свёрнутым, разворо�
     await h.send('expand-active');
     assert.deepEqual(h.state().expanded, ['iteration'], 'the explicit command reveals the block');
     assert.equal(h.state().graph.nodes.length, 12);
+    h.move(h.editors[0], {start: {line: 10, character: 8}, end: {line: 10, character: 36}});
+    assert.deepEqual(h.state().expanded, [], 'moving inside the section folds it again');
+    assert.equal(h.state().activeNode, 'read', 'the folded block is still highlighted');
 });
 
 test('При фиксации новый раздел открывается свёрнутым и подсвечивает блок узла', async t => {

@@ -123,7 +123,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
                 if (switching) history.push({...route});
                 route = {kind: 'section', id: selected.id};
                 bound = selected;
-                if (switching) foldSection();
+                foldSection();
                 column = editor.viewColumn || column;
                 const nodes = bound.nodes.filter(node => node.binding && contains(node.binding, selection));
                 if (nodes.length === 1) {
