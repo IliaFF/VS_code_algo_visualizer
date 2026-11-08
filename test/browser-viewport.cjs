@@ -36,6 +36,8 @@ window.addEventListener('load', async () => {
         check(getComputedStyle(viewport).resize === 'both', 'native resize enabled');
         viewport.style.width = '450px'; viewport.style.height = '360px';
         await wait();
+        const unfold = () => document.querySelector('[data-action="expand-active"]');
+        check(unfold()?.disabled === true, 'unfolding details needs an active node inside a folded block');
         const lock = () => document.querySelector('[data-action="lock-detail"]');
         check(lock()?.getAttribute('aria-pressed') === 'false', 'detail lock starts off');
         lock().click(); await wait();
@@ -46,6 +48,9 @@ window.addEventListener('load', async () => {
         check(lock()?.getAttribute('aria-pressed') === 'false', 'unlocked state is visible');
         await send({...browserState, graph: foldedGraph, expanded: [], activeNode: childNode, detailLocked: true});
         check(document.querySelector('.analysis-node.selected')?.dataset.node === childGroup, 'locked detail highlights the collapsed block');
+        check(unfold()?.disabled === false, 'a folded block with the active node can be unfolded by the button');
+        unfold().click(); await wait();
+        check(window.browserMessages.some(message => message.type === 'expand-active'), 'the unfolding button asks the host');
         const overviewData = {...browserState.data, overview: {edges: [], nodes: [
             {id: 'overview-a', title: 'A', summary: 'a', target: {section: browserState.bound.id}},
             {id: 'overview-b', title: 'B', summary: 'b', target: {path: browserState.bound.file}}]}};

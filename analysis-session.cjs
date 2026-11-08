@@ -58,9 +58,9 @@ async function createAnalysisSession(vscode, root, analysisUri) {
     };
     const subscriptions = [];
     const section = () => data.sections.find(item => item.id === route.id);
-    // While the detail is locked a new section opens folded; the active block still gets highlighted.
-    const foldLockedDetail = () => {
-        if (detailLocked && route.kind === 'section') openGroups().clear();
+    // Moving through the code opens a section folded; the active block still gets highlighted.
+    const foldSection = () => {
+        if (route.kind === 'section') openGroups().clear();
     };
     const clear = () => {
         highlighted?.setDecorations(decoration, []);
@@ -99,7 +99,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
         activeNode = next.activeNode || null;
         actionError = '';
         rebind();
-        foldLockedDetail();
+        if (detailLocked) foldSection();
         send();
     }
     function follow(editor, selections = editor?.selections || [editor?.selection]) {
@@ -123,7 +123,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
                 if (switching) history.push({...route});
                 route = {kind: 'section', id: selected.id};
                 bound = selected;
-                if (switching) foldLockedDetail();
+                if (switching) foldSection();
                 column = editor.viewColumn || column;
                 const nodes = bound.nodes.filter(node => node.binding && contains(node.binding, selection));
                 if (nodes.length === 1) {
@@ -201,6 +201,12 @@ async function createAnalysisSession(vscode, root, analysisUri) {
             if (message.type === 'section' && data.sections.some(item => item.id === message.id)) return navigate({kind: 'section', id: message.id});
             if (message.type === 'clear') { ++epoch; return clear(); }
             if (message.type === 'lock-detail') { detailLocked = !detailLocked; return send(); }
+            if (message.type === 'expand-active') {
+                const owner = (bound?.groups || []).find(group => group.id && group.nodes.includes(activeNode));
+                if (!owner) return;
+                openGroups().add(owner.id);
+                return send();
+            }
             if (route.kind === 'overview' && ['overview-inspect', 'overview-hover', 'overview-reveal'].includes(message.type)) {
                 const node = data.overview.nodes.find(item => item.id === message.id);
                 if (!node) return;

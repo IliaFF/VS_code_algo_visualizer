@@ -354,6 +354,24 @@ test('Фиксация детализации не раскрывает блок
     assert.equal(h.state().activeNode, 'read');
 });
 
+test('Код открывает раздел свёрнутым, разворот — отдельной командой', async t => {
+    const h = await harness(t);
+    await h.send('section', 'sum-positive');
+    await h.send('expand-all');
+    await h.send('section', 'is-positive');
+    const read = h.state().data.sections.find(section => section.id === 'sum-positive').nodes.find(node => node.id === 'read');
+    const file = await h.vscode.workspace.openTextDocument(h.vscode.Uri.file(path.join(h.root, 'algorithm.cjs')));
+    await h.vscode.window.showTextDocument(file, {preserveFocus: true});
+    h.move(h.editors[0], {start: read.range.start && {line: 10, character: 8}, end: {line: 10, character: 36}});
+    assert.equal(h.state().route.id, 'sum-positive', 'the code switches to its section');
+    assert.equal(h.state().activeNode, 'read');
+    assert.deepEqual(h.state().expanded, [], 'the section opens folded');
+    assert.equal(h.state().graph.nodes.length, 4);
+    await h.send('expand-active');
+    assert.deepEqual(h.state().expanded, ['iteration'], 'the explicit command reveals the block');
+    assert.equal(h.state().graph.nodes.length, 12);
+});
+
 test('При фиксации новый раздел открывается свёрнутым и подсвечивает блок узла', async t => {
     const h = await harness(t, async root => {
         const file = path.join(root, 'analysis.json');
