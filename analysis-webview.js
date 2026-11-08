@@ -263,7 +263,13 @@ function drawEdges(canvas, nodes, edges) {
             const label = add('foreignObject', {width: 180, height: 1000, class: 'edge-label', 'data-edge': index});
             const body = element('div', returns.has(edge) ? '↶ ' + (edge.label || 'Возврат цикла') : edge.label, 'edge-label-body');
             label.append(body); layer.append(label);
-            const width = body.offsetWidth, height = body.offsetHeight;
+            // Measure the one-line width: a label narrower than its text wraps and hides the last word.
+            body.style.whiteSpace = 'nowrap'; body.style.maxWidth = 'none';
+            const natural = body.getBoundingClientRect().width;
+            if (natural > 180) { body.style.whiteSpace = ''; body.style.maxWidth = ''; }
+            const width = Math.min(Math.ceil(natural), 180);
+            label.setAttribute('width', width);
+            const height = Math.ceil(body.getBoundingClientRect().height);
             const candidates = [[x1, from.bottom + height / 2 + 7]];
             for (let i = 1; i < points.length; i++) {
                 const [ax, ay] = points[i - 1], [bx, by] = points[i];
@@ -288,7 +294,7 @@ function drawEdges(canvas, nodes, edges) {
             const rect = box(center);
             occupied.push(rect);
             label.setAttribute('x', rect.left); label.setAttribute('y', rect.top);
-            label.setAttribute('width', width); label.setAttribute('height', height);
+            label.setAttribute('height', height);
             relation.label = label;
             pointer(label, relation);
         }

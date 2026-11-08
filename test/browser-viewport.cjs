@@ -55,6 +55,19 @@ window.addEventListener('load', async () => {
         await send({...browserState, activeNode: browserState.graph.nodes[0].id}); verify('node selection');
         await send({...browserState, graph: foldedGraph, expanded: []}); verify('fold');
         await send(browserState); verify('unfold');
+        const fits = () => [...document.querySelectorAll('.edge-label')].map(label => {
+            const body = label.querySelector('.edge-label-body');
+            const outer = label.getBoundingClientRect(), inner = body.getBoundingClientRect();
+            check(inner.width <= outer.width + .5 && inner.height <= outer.height + .5, 'edge label fits its box: ' + body.textContent);
+            return inner.height;
+        });
+        const plainHeights = fits();
+        check(plainHeights.every(height => height <= 22), 'short edge labels stay on one line');
+        const longGraph = {...browserState.graph, edges: browserState.graph.edges.map((edge, index) => index ? edge : {...edge, label: 'Очень длинная подпись условия перехода'})};
+        await send({...browserState, graph: longGraph});
+        const longHeights = fits();
+        check(longHeights.some(height => height > 22), 'a long edge label wraps instead of shrinking to a column');
+        await send(browserState); verify('unfold');
         await send({...browserState, actionError: 'Test rerender'}); verify('status update');
         const frame = document.querySelector('.graph-viewport');
         const inner = frame.getBoundingClientRect();
