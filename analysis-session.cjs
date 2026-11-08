@@ -49,7 +49,6 @@ async function createAnalysisSession(vscode, root, analysisUri) {
     let loadError = '';
     let actionError = '';
     let detailLocked = false;
-    let lockedLevel = 'closed';
     let column = vscode.window.activeTextEditor?.viewColumn || vscode.ViewColumn.One;
     const history = [];
     const expanded = new Map();
@@ -59,14 +58,9 @@ async function createAnalysisSession(vscode, root, analysisUri) {
     };
     const subscriptions = [];
     const section = () => data.sections.find(item => item.id === route.id);
-    const detailGroups = () => (bound?.groups || []).filter(group => group.id);
-    // The locked level is "open" only when the whole graph is open; otherwise the next section stays folded.
-    const detailLevel = () => detailGroups().length && detailGroups().every(group => openGroups().has(group.id)) ? 'open' : 'closed';
-    const applyDetailLevel = () => {
-        if (!detailLocked || route.kind !== 'section') return;
-        const groups = detailGroups();
-        openGroups().clear();
-        if (lockedLevel === 'open') groups.forEach(group => openGroups().add(group.id));
+    // While the detail is locked a new section opens folded; the active block still gets highlighted.
+    const foldLockedDetail = () => {
+        if (detailLocked && route.kind === 'section') openGroups().clear();
     };
     const clear = () => {
         highlighted?.setDecorations(decoration, []);
@@ -105,7 +99,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
         activeNode = next.activeNode || null;
         actionError = '';
         rebind();
-        applyDetailLevel();
+        foldLockedDetail();
         send();
     }
     function follow(editor, selections = editor?.selections || [editor?.selection]) {
@@ -129,7 +123,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
                 if (switching) history.push({...route});
                 route = {kind: 'section', id: selected.id};
                 bound = selected;
-                if (switching) applyDetailLevel();
+                if (switching) foldLockedDetail();
                 column = editor.viewColumn || column;
                 const nodes = bound.nodes.filter(node => node.binding && contains(node.binding, selection));
                 if (nodes.length === 1) {
@@ -208,7 +202,7 @@ async function createAnalysisSession(vscode, root, analysisUri) {
             if (message.type === 'path' && data.entries.some(entry => entry.path === message.id)) return navigate({kind: 'path', id: message.id});
             if (message.type === 'section' && data.sections.some(item => item.id === message.id)) return navigate({kind: 'section', id: message.id});
             if (message.type === 'clear') { ++epoch; return clear(); }
-            if (message.type === 'lock-detail') { lockedLevel = detailLevel(); detailLocked = !detailLocked; return send(); }
+            if (message.type === 'lock-detail') { detailLocked = !detailLocked; return send(); }
             if (route.kind === 'overview' && ['overview-inspect', 'overview-hover', 'overview-reveal'].includes(message.type)) {
                 const node = data.overview.nodes.find(item => item.id === message.id);
                 if (!node) return;
@@ -245,7 +239,6 @@ async function createAnalysisSession(vscode, root, analysisUri) {
                 else openGroups().add(group.id);
                 const owner = groups.find(item => !openGroups().has(item.id) && item.nodes.includes(activeNode));
                 if (owner) activeNode = owner.id;
-                if (detailLocked) lockedLevel = detailLevel();
                 send(); return;
             }
             const node = [...(bound?.nodes || []), ...(bound?.groups || []).filter(group => group.id)].find(item => item.id === message.id);

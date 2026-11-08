@@ -353,7 +353,7 @@ test('Фиксация детализации не раскрывает блок
     assert.ok(h.state().expanded.includes('iteration'), 'unlocked selection expands the block again');
 });
 
-test('Зафиксированный уровень подробности переносится на следующий раздел', async t => {
+test('При фиксации новый раздел открывается свёрнутым и подсвечивает блок узла', async t => {
     const h = await harness(t, async root => {
         const file = path.join(root, 'analysis.json');
         const data = JSON.parse(await fs.readFile(file, 'utf8'));
@@ -364,20 +364,23 @@ test('Зафиксированный уровень подробности пе�
     });
     await h.send('section', 'sum-positive');
     await h.send('expand-all');
-    await h.send('section', 'sum-second');
-    await h.send('collapse-all');
-    await h.send('section', 'sum-positive');
-    assert.equal(h.state().expanded.length, h.state().bound.groups.length, 'the first section keeps its own open level');
     await h.send('lock-detail');
     await h.send('section', 'sum-second');
-    assert.equal(h.state().expanded.length, h.state().bound.groups.length, 'a locked open level opens the next section');
-    await h.send('lock-detail');
-    await h.send('collapse-all');
-    await h.send('lock-detail');
+    assert.equal(h.state().expanded.length, 0, 'a locked section opens folded');
+    const read = h.state().bound.nodes.find(node => node.id === 'read');
+    await h.send('inspect', 'read');
+    await h.send('reveal', 'read');
+    h.move(h.editors[0], read.binding);
+    assert.equal(h.state().activeNode, 'read');
+    assert.equal(h.state().expanded.length, 0, 'moving through the code keeps the block folded');
+    await h.send('toggle-group', 'iteration');
+    assert.deepEqual(h.state().expanded, ['iteration'], 'an explicit expand still works while locked');
     await h.send('section', 'sum-positive');
-    assert.equal(h.state().expanded.length, 0, 'a locked closed level folds the next section');
+    assert.equal(h.state().expanded.length, 0, 'the next switch folds the detail again');
     await h.send('lock-detail');
-    assert.equal(h.state().expanded.length, 0);
+    await h.send('expand-all');
+    await h.send('section', 'sum-second');
+    assert.deepEqual(h.state().expanded, ['iteration'], 'unlocked sections keep their own level');
 });
 
 test('Узел нескольких файлов предлагает выбор и не подсвечивает произвольный первый файл', async t => {
