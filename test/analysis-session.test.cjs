@@ -14,10 +14,11 @@ const {createAnalysisSession, safeUri} = require('../analysis-session.cjs');
 const {resolveSection} = require('../analysis.cjs');
 const directory = path.join(__dirname, '../examples/analysis-contract');
 
-async function harness(t) {
+async function harness(t, prepare) {
     const root = await fs.mkdtemp(path.join(tmpdir(), 'analysis-session-'));
     t.after(() => fs.rm(root, {recursive: true, force: true}));
     for (const file of ['analysis.json', 'algorithm.cjs']) await fs.copyFile(path.join(directory, file), path.join(root, file));
+    if (prepare) await prepare(root);
     const documents = new Map(), changes = new Set(), selections = new Set(), active = new Set();
     const editors = [], states = [], calls = [];
     class Uri {
@@ -350,6 +351,33 @@ test('Фиксация детализации не раскрывает блок
     assert.equal(h.state().detailLocked, false);
     h.move(h.editors[0], read.binding);
     assert.ok(h.state().expanded.includes('iteration'), 'unlocked selection expands the block again');
+});
+
+test('Зафиксированный уровень подробности переносится на следующий раздел', async t => {
+    const h = await harness(t, async root => {
+        const file = path.join(root, 'analysis.json');
+        const data = JSON.parse(await fs.readFile(file, 'utf8'));
+        const copy = structuredClone(data.sections[0]);
+        copy.id = 'sum-second'; copy.title = 'Second view';
+        data.sections.push(copy);
+        await fs.writeFile(file, JSON.stringify(data));
+    });
+    await h.send('section', 'sum-positive');
+    await h.send('expand-all');
+    await h.send('section', 'sum-second');
+    await h.send('collapse-all');
+    await h.send('section', 'sum-positive');
+    assert.equal(h.state().expanded.length, h.state().bound.groups.length, 'the first section keeps its own open level');
+    await h.send('lock-detail');
+    await h.send('section', 'sum-second');
+    assert.equal(h.state().expanded.length, h.state().bound.groups.length, 'a locked open level opens the next section');
+    await h.send('lock-detail');
+    await h.send('collapse-all');
+    await h.send('lock-detail');
+    await h.send('section', 'sum-positive');
+    assert.equal(h.state().expanded.length, 0, 'a locked closed level folds the next section');
+    await h.send('lock-detail');
+    assert.equal(h.state().expanded.length, 0);
 });
 
 test('Узел нескольких файлов предлагает выбор и не подсвечивает произвольный первый файл', async t => {
