@@ -309,7 +309,7 @@ test('Блоки раскрываются, сворачиваются и выб�
     assert.equal(h.state().activeNode, 'iteration');
     assert.equal(h.state().graph.nodes.length, 4);
     h.move(h.editors[0], read.binding);
-    assert.ok(h.state().expanded.includes('iteration'), 'code selection reveals the hidden child');
+    assert.ok(!h.state().expanded.includes('iteration'), 'code selection does not unfold the hidden child');
     assert.equal(h.state().activeNode, 'read');
     h.move(h.editors[0], group.binding);
     assert.equal(h.state().activeNode, 'iteration');
@@ -350,7 +350,8 @@ test('Фиксация детализации не раскрывает блок
     await h.send('lock-detail');
     assert.equal(h.state().detailLocked, false);
     h.move(h.editors[0], read.binding);
-    assert.ok(h.state().expanded.includes('iteration'), 'unlocked selection expands the block again');
+    assert.ok(!h.state().expanded.includes('iteration'), 'selection never unfolds the block, locked or not');
+    assert.equal(h.state().activeNode, 'read');
 });
 
 test('При фиксации новый раздел открывается свёрнутым и подсвечивает блок узла', async t => {

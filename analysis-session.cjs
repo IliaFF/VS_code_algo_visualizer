@@ -128,8 +128,6 @@ async function createAnalysisSession(vscode, root, analysisUri) {
                 const nodes = bound.nodes.filter(node => node.binding && contains(node.binding, selection));
                 if (nodes.length === 1) {
                     activeNode = nodes[0].id;
-                    const owner = bound.groups?.find(group => group.id && group.nodes.includes(activeNode));
-                    if (owner && !detailLocked) openGroups().add(owner.id);
                 } else if (!nodes.length) {
                     const groups = (bound.groups || []).filter(group => group.id && group.binding && contains(group.binding, selection));
                     if (groups.length === 1) activeNode = groups[0].id;
